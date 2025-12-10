@@ -1,91 +1,124 @@
-# Tame - Audio Volume Limiter
+# Tame
 
-Tame automatically protects your ears by reducing system volume when audio gets too loud.
+A Windows audio volume limiter that automatically reduces system volume when audio exceeds a configurable threshold, protecting against sudden loud sounds.
 
 ## Features
 
-- 🎧 Automatic volume limiting to prevent hearing damage
-- 🎮 Perfect for gaming (e.g., CS:GO footsteps vs gunshots)
-- 🎵 Real-time audio monitoring
-- ⚙️ Customizable loudness cap
-- 🪟 System tray support
-- 💾 Persistent settings
-- 🚀 Run at Windows startup
+- Automatic volume limiting with configurable threshold
+- Real-time audio peak monitoring via Windows Audio Session API (WASAPI)
+- Compressor-style attack/release/hold timing controls
+- Soft-knee limiting with adjustable leeway (dB)
+- System tray integration with minimize-to-tray support
+- Windows startup integration (starts minimized when enabled)
+- Persistent settings stored in `%APPDATA%\tame\settings.json`
 
-## Quick Start
+## Installation
 
-### Option 1: Run from Source
+### Pre-built Executable
 
-1. Run `setup.bat` to install dependencies
-2. Run `python tame.py` to start the application
+Download `Tame.exe` from the [Releases](https://github.com/FaintWhisper/Tame/releases) page.
 
-### Option 2: Build Executable
-
-1. Run `setup.bat` to install dependencies
-2. Run `build.bat` to create standalone exe
-3. Find `Tame.exe` in the `dist` folder
-
-## Requirements
-
-- Windows 10/11
-- Python 3.8+ (for running from source)
-- "Stereo Mix" or similar audio loopback enabled in Windows (optional but recommended)
-
-## Enabling Stereo Mix (for better audio monitoring)
-
-1. Right-click speaker icon in system tray
-2. Select "Sounds" → "Recording" tab
-3. Right-click in empty space → "Show Disabled Devices"
-4. Right-click "Stereo Mix" → "Enable"
-
-## How It Works
-
-Tame monitors your system's audio output in real-time. When it detects audio that exceeds your configured loudness cap, it instantly reduces the system volume to a safe level. Once the loud audio stops, the volume gradually returns to normal.
-
-The app respects manual volume changes - if you adjust the volume yourself, Tame pauses for 2 seconds before resuming automatic control.
-
-## Usage
-
-1. Launch Tame
-2. Set your desired "Volume Cap" using the slider (20% is a good starting point)
-3. The app runs in the background and automatically manages volume
-4. Close the window to minimize to tray (app keeps running)
-
-## Settings
-
-- **Volume Cap**: Maximum allowed output volume (0-100%)
-- **Run at Windows startup**: Auto-start Tame when Windows boots
-- **Enable/Disable**: Toggle the limiter on/off
-
-Settings are automatically saved to: `%APPDATA%\tame\settings.json`
-
-## Building from Source
+### Build from Source
 
 ```bash
+# Clone the repository
+git clone https://github.com/FaintWhisper/Tame.git
+cd Tame
+
 # Install dependencies
 pip install -r requirements.txt
 
 # Run directly
 python tame.py
 
-# Build executable
-pyinstaller --onefile --windowed --name Tame tame.py
+# Build standalone executable
+build.bat
 ```
+
+## Requirements
+
+- Windows 10/11
+- Python 3.8+ (for running from source)
+
+## Usage
+
+1. Launch `Tame.exe` or run `python tame.py`
+2. Adjust the **Volume Cap** slider to set your maximum output level (default: 20%)
+3. The limiter monitors audio in real-time and reduces volume when peaks exceed the threshold
+4. Close the window to minimize to system tray (configurable)
+
+## Configuration
+
+### Basic Settings
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| Volume Cap | Maximum allowed output level (0-100%) | 20% |
+| Run at Windows startup | Auto-start Tame when Windows boots | Off |
+| Minimize to tray on close | Hide to tray instead of exiting | On |
+
+### Advanced Limiter Settings
+
+| Parameter | Description | Default | Range |
+|-----------|-------------|---------|-------|
+| Attack | Time audio must exceed threshold before limiting | 50ms | 1-100ms |
+| Release | Time to restore volume after audio drops below threshold | 500ms | 100-3000ms |
+| Hold | Delay before release begins after audio drops | 150ms | 0-500ms |
+| Cooldown | Pause duration after manual volume adjustment | 2.0s | 0.5-5.0s |
+| Leeway | Soft-knee range above threshold (dB) | 3.0dB | 0-12dB |
+| Dampening | Maximum reduction multiplier for sustained peaks | 1.0x | 1.0-3.0x |
+| Dampening Speed | Time to reach maximum dampening | 0.0s | 0-5s |
+
+### How the Limiter Works
+
+1. **Peak Detection**: Monitors system audio output using `IAudioMeterInformation` from WASAPI
+2. **Threshold Check**: Calculates potential output level based on current peak and system volume
+3. **Attack Phase**: When audio exceeds threshold, waits for sustained peak (attack time) before limiting
+4. **Limiting**: Reduces system volume proportionally, applying leeway curve and dampening factor
+5. **Hold Phase**: After audio drops below threshold, maintains reduced volume for hold duration
+6. **Release Phase**: Gradually restores volume to original level over release time
+
+The limiter respects manual volume changes by pausing automatic control for the configured cooldown period.
 
 ## Technical Details
 
-- **Audio Monitoring**: PyAudio for capturing system audio
-- **Volume Control**: pycaw for Windows volume management
-- **GUI**: tkinter (included with Python)
-- **Packaging**: PyInstaller for standalone executable
+### Architecture
 
-## Credits
+- **Audio Interface**: Windows Core Audio API (WASAPI) via `pycaw`
+  - `IAudioEndpointVolume` for system volume control
+  - `IAudioMeterInformation` for real-time peak metering
+- **GUI Framework**: tkinter with custom toggle switch widgets
+- **System Tray**: `pystray` with PIL for icon generation
+- **Packaging**: PyInstaller single-file executable
 
-Based on the original C# Mufflr by [John Tringham](https://github.com/johntringham/Mufflr)
+### Dependencies
 
-- Original: [Avalonia](https://avaloniaui.net/) + [NAudio](https://github.com/naudio/NAudio)
-- Tame: tkinter + pycaw
+```
+pycaw>=20230407      # Windows Core Audio Python bindings
+comtypes>=1.2.0      # COM interface support
+numpy>=1.24.0        # Numerical operations
+pystray>=0.19.0      # System tray integration
+Pillow>=10.0.0       # Image processing for tray icon
+pyinstaller>=6.0.0   # Executable packaging (build only)
+```
+
+### File Structure
+
+```
+Tame/
+├── tame.py           # Main application
+├── Tame.spec         # PyInstaller configuration
+├── build.bat         # Build script
+├── setup.bat         # Development environment setup
+├── requirements.txt  # Python dependencies
+└── dist/
+    └── Tame.exe      # Built executable
+```
+
+## Acknowledgments
+
+Inspired by [Mufflr](https://github.com/johntringham/Mufflr) by John Tringham (C#/Avalonia).
 
 ## License
 
-Free and open source. No tracking, telemetry, or data collection.
+MIT License. No tracking, telemetry, or data collection.

@@ -295,7 +295,6 @@ class VolumeLimiter:
                 self.original_volume = new_user_vol
                 self.is_limiting = False
                 self.time_over_threshold = 0.0
-                print(f"[USER] Volume changed to {new_user_vol:.2f}")
             
             # Skip if in user cooldown
             if self.audio.user_set_time and (now - self.audio.user_set_time) < self.user_cooldown:
@@ -325,7 +324,6 @@ class VolumeLimiter:
                     # Sustained peak detected - start or continue limiting
                     if not self.is_limiting:
                         self.is_limiting = True
-                        print(f"[ATTACK] Sustained peak for {self.time_over_threshold*1000:.0f}ms, raw_peak={raw_peak:.2f}, potential={potential_output:.2f}")
                     
                     # Calculate how far into the leeway zone we are (0 to 1)
                     # 0 = at volume_cap, 1 = at soft_threshold (max leeway)
@@ -359,7 +357,6 @@ class VolumeLimiter:
                     target_volume = target_volume / sustained_factor
                     target_volume = max(0.01, min(1.0, target_volume))
                     
-                    print(f"[LIMITING] leeway={leeway_ratio:.1%}, sustained={sustained_factor:.1f}x, target_vol={target_volume:.2f}")
                     self.audio.set_volume(target_volume)
             else:
                 # Audio is under threshold
@@ -377,11 +374,9 @@ class VolumeLimiter:
                             # Increase volume gradually
                             new_vol = current + self.release_rate * dt
                             new_vol = min(new_vol, target)
-                            print(f"[RELEASE] current={current:.2f}, new_vol={new_vol:.2f}, target={target:.2f}")
                             self.audio.set_volume(new_vol)
                         else:
                             # Reached original volume, stop limiting
-                            print(f"[RELEASE DONE] restored to {target:.2f}")
                             self.audio.set_volume(target)
                             self.is_limiting = False
             
@@ -408,7 +403,7 @@ class VolumeLimiter:
 class TameGUI:
     """Lightweight GUI"""
     
-    def __init__(self, root):
+    def __init__(self, root, start_minimized=False):
         self.root = root
         self.root.title("Tame")
         self.root.geometry("460x780")
@@ -435,6 +430,10 @@ class TameGUI:
         
         # Position window
         self._position_window()
+        
+        # Start minimized to tray if requested
+        if start_minimized:
+            self.root.withdraw()
         
         # Start UI updates (slower rate)
         self._schedule_ui_update()
@@ -668,11 +667,19 @@ class TameGUI:
     def _on_startup_change(self):
         enabled = self.startup_var.get()
         self.settings.run_at_startup = enabled
+        self._update_startup_registry()
+    
+    def _update_startup_registry(self):
+        """Update Windows startup registry with correct flags"""
         key_path = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
         try:
             key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE)
-            if enabled:
-                winreg.SetValueEx(key, "Tame", 0, winreg.REG_SZ, sys.executable)
+            if self.settings.run_at_startup:
+                # Add --minimized flag if minimize to tray is also enabled
+                exe_path = sys.executable
+                if self.settings.show_close_notifications:
+                    exe_path = f'"{exe_path}" --minimized'
+                winreg.SetValueEx(key, "Tame", 0, winreg.REG_SZ, exe_path)
             else:
                 try:
                     winreg.DeleteValue(key, "Tame")
@@ -686,6 +693,9 @@ class TameGUI:
         """Handle minimize to tray checkbox change"""
         self.settings.show_close_notifications = self.minimize_var.get()
         self.settings.save()
+        # Update registry if startup is enabled (to add/remove --minimized flag)
+        if self.settings.run_at_startup:
+            self._update_startup_registry()
     
     def _schedule_ui_update(self):
         """Update UI at 10Hz - much less CPU intensive"""
@@ -809,8 +819,11 @@ class TameGUI:
 
 
 def main():
+    # Check for --minimized flag (used when starting at login)
+    start_minimized = "--minimized" in sys.argv
+    
     root = tk.Tk()
-    app = TameGUI(root)
+    app = TameGUI(root, start_minimized=start_minimized)
     root.mainloop()
 
 
